@@ -1,0 +1,58 @@
+# PulseBot: runs every 10 minutes on weekdays. The UTC window 13:00-21:59 covers 09:00-16:30 New York time in BOTH
+# summer (EDT, UTC-4) and winter (EST, UTC-5); the code itself decides (zoneinfo) whether there is work to do,
+# so DST and holidays are handled in Python, not in cron. GitHub may delay scheduled runs by 5-20 minutes.
+name: pulsebot
+on:
+  schedule:
+    - cron: "*/10 13-21 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      force_test:
+        description: "Send a test + status message even outside market hours"
+        type: boolean
+        default: true
+concurrency:
+  group: pulsebot
+  cancel-in-progress: false
+permissions:
+  contents: write
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 9
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Restore state
+        uses: actions/cache/restore@v4
+        with:
+          path: state/state.json
+          key: pulse-state-${{ github.run_id }}
+          restore-keys: pulse-state-
+      - name: Run PulseBot
+        env:
+          PULSEBOT_LIVE: "1"
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+          PULSEBOT_FORCE_TEST: ${{ github.event_name == 'workflow_dispatch' && inputs.force_test && '1' || '0' }}
+        run: python -m pulsebot run
+      - name: Save state
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: state/state.json
+          key: pulse-state-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Weekly heartbeat commit (keeps the scheduled workflow from being disabled after 60 days)
+        if: always()
+        run: |
+          if [ -n "$(git status --porcelain state/heartbeat.txt)" ]; then
+            git config user.name "pulsebot"
+            git config user.email "pulsebot@users.noreply.github.com"
+            git add state/heartbeat.txt
+            git commit -m "weekly heartbeat [skip ci]"
+            git push
+          fi

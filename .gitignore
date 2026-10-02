@@ -1,0 +1,21 @@
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+# large local market data (re-download with tools/fetch_history.py)
+data_cache/
+# runtime state (kept in the GitHub Actions cache, never in git) — only the weekly heartbeat file is committed
+state/*
+!state/heartbeat.txt
+*.tmp
+samples/outbox_live_dryrun.jsonl
+samples/replay/state.json
+samples/replay/updates.json
+# secrets
+.env
+.env.*
+*.env
+*token*
+*secret*
+*.pem
+*.key
