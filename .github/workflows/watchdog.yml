@@ -1,0 +1,29 @@
+# Watchdog: once per weekday near the US close, check that pulsebot had a successful run in the last 90 minutes.
+# If not, send a Telegram alert so a stopped bot is noticed the same day.
+name: pulsebot-watchdog
+on:
+  schedule:
+    - cron: "17 19 * * 1-5"   # 19:17 UTC = during NY market hours in summer and winter
+  workflow_dispatch:
+permissions:
+  actions: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check last successful pulsebot run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT_ID: ${{ secrets.CHAT_ID }}
+        run: |
+          last=$(gh api "repos/${{ github.repository }}/actions/workflows/pulse.yml/runs?status=success&per_page=1" --jq '.workflow_runs[0].updated_at // empty')
+          now=$(date -u +%s)
+          if [ -z "$last" ]; then age=999999; else age=$(( now - $(date -u -d "$last" +%s) )); fi
+          echo "last success: ${last:-none} (age ${age}s)"
+          if [ "$age" -gt 5400 ]; then
+            msg="⚠️ تنبيه: PulseBot ما اشتغل بنجاح من أكثر من ساعة ونص. آخر تشغيل ناجح: ${last:-ما فيه}. راجع تبويب Actions."
+            curl -s -X POST "https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage" -d chat_id="${CHAT_ID}" --data-urlencode text="$msg" > /dev/null
+            exit 1
+          fi
