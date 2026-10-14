@@ -1,4 +1,4 @@
-"""One bot run (GitHub Actions calls this every 10 minutes). Deterministic: same data + same state -> same messages."""
+"""One bot run (GitHub Actions schedules this every 30 minutes). Deterministic: same data + same state -> same messages."""
 import logging, datetime as dt, os
 import pandas as pd
 from . import config as C, indicators as I, rules as R, messages as M, state as S, commands as CMD, news as NEWS
@@ -44,14 +44,25 @@ class Engine:
         if self.on("commands"):
             self.handle_commands()
         work = ph in ("pre", "open", "post") and now.time() >= dt.time(*C.MARKET["morning_from"])
+        run_ok = True
         if work:
             try:
                 self.work(today, ph)
             except Exception as e:                       # never crash silently: tell the user
+                run_ok = False
                 log.exception("run failed")
                 st["last_error"] = f"{now:%H:%M} خطأ داخلي: {type(e).__name__}"
                 if self.on("tech_alerts") and S.once(st, f"{today}|tech|crash|{now.hour}", today):
                     self.emit("tech", M.tech({"time": now, "what": f"خطأ داخلي في البوت ({type(e).__name__})", "action": "تم تسجيل الخطأ وسيُعاد التشغيل تلقائياً"}))
+        if ph == "open" and self.on("half_hour_status"):
+            slot = now.replace(minute=(now.minute // 30) * 30, second=0, microsecond=0)
+            slot_key = f"{today}|half_hour_status|{slot:%H:%M}"
+            if S.once(st, slot_key, today):
+                self.emit("half_hour_status", M.half_hour_status({
+                    "now": now, "run_ok": run_ok, "data_ok": st.get("data_ok", 0),
+                    "n_symbols": len(self.symbols), "source": st.get("source"),
+                    "last_error": st.get("last_error")
+                }))
         self.weekly_heartbeat(now)
         if self.force_test:                              # manual GitHub run: always one message, even when the market is closed
             self.emit("test", M.test_ping(self.reply("status", "")))

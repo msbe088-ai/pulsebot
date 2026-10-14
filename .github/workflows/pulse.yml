@@ -1,10 +1,10 @@
-# PulseBot: runs every 10 minutes on weekdays. The UTC window 13:00-21:59 covers 09:00-16:30 New York time in BOTH
+# PulseBot: runs every 30 minutes on weekdays. The UTC window 13:00-21:59 covers the US market session in BOTH
 # summer (EDT, UTC-4) and winter (EST, UTC-5); the code itself decides (zoneinfo) whether there is work to do,
 # so DST and holidays are handled in Python, not in cron. GitHub may delay scheduled runs by 5-20 minutes.
 name: pulsebot
 on:
   schedule:
-    - cron: "4-59/10 13-21 * * 1-5"
+    - cron: "7,37 13-21 * * 1-5"
   workflow_dispatch:
     inputs:
       force_test:

@@ -30,6 +30,7 @@ DEFAULT_TOGGLES = {
     "eod_summary": True,         # msg 14
     "tech_alerts": True,         # msg 15
     "commands": True,            # getUpdates command handling
+    "half_hour_status": True,    # concise heartbeat on each 30-minute market run
     # ---- delivery / volume (added 2026-10-02: ~280 -> ~20-40 messages/day) ----
     "summary_consolidated": True,  # msg 2 = ONE message per closed 1H bar for all symbols (off = one message per symbol)
     "notable_only": True,          # msgs 5/7 only for NOTABLE symbols (formula: NOTABLE_RULE below; off = all symbols)

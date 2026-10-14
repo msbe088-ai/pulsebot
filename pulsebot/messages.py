@@ -19,7 +19,8 @@ FEATURE_WORD = {"morning_heartbeat": "رسالة الصباح", "hourly_summary"
                 "trail_stop_after_targets": "رفع الوقف بعد الأهداف", "show_hit_stats": "إحصائيات الأهداف التاريخية",
                 "news": "الأخبار", "eod_summary": "ملخص نهاية اليوم", "tech_alerts": "تنبيهات المشاكل التقنية", "commands": "الأوامر",
                 "summary_consolidated": "الملخص كل ساعة في رسالة واحدة", "notable_only": "الوقف والأهداف للأسهم البارزة فقط",
-                "notes_consolidated": "الوقف والأهداف في رسالة واحدة لكل ساعة", "batch_events": "تجميع الأحداث في رسالة واحدة لكل تشغيل"}
+                "notes_consolidated": "الوقف والأهداف في رسالة واحدة لكل ساعة", "batch_events": "تجميع الأحداث في رسالة واحدة لكل تشغيل",
+                "half_hour_status": "رسالة حالة كل 30 دقيقة"}
 
 def money(sym, x, signed=False):
     if x is None:
@@ -259,7 +260,7 @@ def _tech_plain(p):
     if p.get("symbols"):
         L.append(f"الأسهم المتأثرة ({len(p['symbols'])}): " + "، ".join(p["symbols"]))
     L.append(f"ما تم: {p['action']}")
-    L.append("البوت سيحاول تلقائياً في التشغيل القادم (كل 10 دقائق).")
+    L.append("البوت سيحاول تلقائياً في التشغيل القادم (كل 30 دقيقة تقريباً؛ قد يتأخر GitHub Actions).")
     return "\n".join(L)
 
 # ---------------- command replies ----------------
@@ -273,7 +274,7 @@ def _status_plain(p):
          f"الأخبار: {'تعمل ✅' if p['toggles']['news'] else 'متوقفة ⛔'}",
          f"اليوم: {p['counts']['messages']} رسالة، {p['counts']['notes']} ملاحظة وقف، {p['open_plans']} خطة مفتوحة",
          f"وضع الإرسال: {'حقيقي' if p['live'] else 'تجريبي (لا يُرسل شيء)'}",
-         "التشغيل: كل 10 دقائق أيام التداول من 09:00 إلى 16:30 بتوقيت نيويورك (التوقيت الصيفي محسوب تلقائياً)."]
+         "التشغيل: كل 30 دقيقة تقريباً أيام التداول؛ GitHub Actions قد يؤخر أو يفوّت بعض التشغيلات."]
     return "\n".join(L)
 
 def _help_text_plain():
@@ -289,7 +290,7 @@ def _help_text_plain():
                       "/الميزات — أو /features : كل الميزات وحالتها (تشغيل/إيقاف)",
                       "/تبديل اسم_الميزة تشغيل|إيقاف — أو /toggle name on|off : تشغيل أو إيقاف أي ميزة",
                       "/مساعدة — أو /help : هذه القائمة",
-                      "ملاحظة: الرد يصل خلال 10 دقائق تقريباً (البوت يعمل بالجدولة وليس باستمرار)."])
+                      "ملاحظة: الرد يصل مع التشغيل المجدول التالي (كل 30 دقيقة تقريباً؛ البوت لا يعمل باستمرار)."])
 
 def _features_list_plain(toggles):
     L = ["⚙️ الميزات (الاسم للأمر /تبديل — الحالة):"]
@@ -669,6 +670,25 @@ def status(p):
         else:
             out.append(ln)
     return _as_html("\n".join(out), ("البيانات", "اليوم", "وضع الإرسال"))
+
+def half_hour_status(p):
+    """Concise scheduled heartbeat while the US market is open."""
+    if not p.get("run_ok"):
+        state = "تعثر التنفيذ الحالي"
+    elif p.get("data_ok", 0) == p.get("n_symbols", 0):
+        state = "التنفيذ ناجح والبيانات مكتملة"
+    else:
+        state = "التنفيذ ناجح لكن بعض بيانات الأسهم ناقصة"
+    lines = ["🤖 تحديث البوت الدوري — كل 30 دقيقة",
+             f"الوقت: {t(p['now'])}",
+             f"الحالة: {state}",
+             f"البيانات: {p.get('data_ok', 0)} من {p.get('n_symbols', 0)} سهم (المصدر: {p.get('source') or 'لم يُجلب بعد'})"]
+    if p.get("last_error"):
+        lines.append(f"آخر خطأ مسجل: {p['last_error']}")
+    else:
+        lines.append("آخر خطأ مسجل: لا يوجد")
+    lines.append("الأوامر تُفحص عند كل تشغيل مجدول؛ قد يتأخر التشغيل بسبب GitHub Actions.")
+    return _as_html("\n".join(lines), ("البيانات:", "آخر خطأ مسجل:"))
 
 def help_text():
     """each command: bold Arabic command + English alias on one line, what it does on the next."""

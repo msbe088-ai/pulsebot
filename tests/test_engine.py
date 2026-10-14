@@ -236,3 +236,11 @@ def test_force_test_sends_ping_even_when_closed(cache, tmp_path):
     Engine(OfflineData(cache, t), tg, t, state_path=str(tmp_path / "s.json"), symbols=SYMS, news_getter=lambda s: [], force_test=True).run()
     kinds = [k for k, _ in tg.sent]
     assert kinds == ["test"] and "رسالة اختبار" in tg.sent[0][1] and "حالة البوت" in tg.sent[0][1]
+
+def test_half_hour_status_once_per_slot(cache, tmp_path):
+    first = run(cache, tmp_path, at(10, 7))
+    same_slot = run(cache, tmp_path, at(10, 25))
+    next_slot = run(cache, tmp_path, at(10, 37))
+    assert sum(k == "half_hour_status" for k, _ in first) == 1
+    assert not any(k == "half_hour_status" for k, _ in same_slot)
+    assert sum(k == "half_hour_status" for k, _ in next_slot) == 1
