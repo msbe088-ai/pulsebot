@@ -17,7 +17,7 @@ T_WORD = {"T1": "الهدف الأول T1", "T2": "الهدف الثاني T2", 
 FEATURE_WORD = {"morning_heartbeat": "رسالة الصباح", "hourly_summary": "الملخص كل ساعة", "trend_change": "تغيّر الاتجاه",
                 "big_move": "تنبيه الحركة الكبيرة", "stop_notes": "ملاحظات الوقف", "targets": "الأهداف المرجعية",
                 "trail_stop_after_targets": "رفع الوقف بعد الأهداف", "show_hit_stats": "إحصائيات الأهداف التاريخية",
-                "news": "الأخبار", "eod_summary": "ملخص نهاية اليوم", "tech_alerts": "تنبيهات المشاكل التقنية", "commands": "الأوامر",
+                "eod_summary": "ملخص نهاية اليوم", "tech_alerts": "تنبيهات المشاكل التقنية", "commands": "الأوامر",
                 "summary_consolidated": "الملخص كل ساعة في رسالة واحدة", "notable_only": "الوقف والأهداف للأسهم البارزة فقط",
                 "notes_consolidated": "الوقف والأهداف في رسالة واحدة لكل ساعة", "batch_events": "تجميع الأحداث في رسالة واحدة لكل تشغيل",
                 "half_hour_status": "رسالة حالة كل 30 دقيقة"}
@@ -227,16 +227,6 @@ def plan_expired(p):
                       f"الدخول المرجعي: {money(s, p['entry'])} — سعر الإغلاق: {money(s, p['close'])} ({money(s, (p['close'] - p['entry']) * (1 if p['dir'] == 'up' else -1), True)})",
                       f"الوقف كان: {money(s, p['stop'])} — T1 كان: {money(s, p['t1'])}"])
 
-# ---------------- 13 ----------------
-def news(p):
-    from .telegram import Html
-    import html as _h
-    e = lambda x: _h.escape(str(x), quote=False)
-    S = "━" * __import__("pulsebot.config", fromlist=["SEPARATOR_LEN"]).SEPARATOR_LEN
-    return Html("\n".join([f"📰 <b>{e(p['sym'])}</b> · خبر", S, e(p["title"]), S,
-                           f"المصدر: {e(p['publisher'])}", f"الوقت: {e(p['time_txt'])}", e(p["link"]),
-                           "(الأخبار تُعرض كما هي بدون تحليل)"]))
-
 # ---------------- 14 ----------------
 def _eod_plain(p):
     c = p["counts"]
@@ -264,79 +254,140 @@ def _tech_plain(p):
     return "\n".join(L)
 
 # ---------------- command replies ----------------
-def _status_plain(p):
-    L = ["🩺 حالة البوت",
-         f"الوقت: {p['now'].strftime('%Y-%m-%d')} {t(p['now'])}",
-         f"حالة السوق: {p['phase_word']}",
-         f"آخر تشغيل: {p['last_run']}",
-         f"البيانات: {p['data_ok']} من {p['n_symbols']} سهم تمام — المصدر: {p['source']}",
-         f"آخر مشكلة: {p['last_error'] or 'لا يوجد'}",
-         f"الأخبار: {'تعمل ✅' if p['toggles']['news'] else 'متوقفة ⛔'}",
-         f"اليوم: {p['counts']['messages']} رسالة، {p['counts']['notes']} ملاحظة وقف، {p['open_plans']} خطة مفتوحة",
-         f"وضع الإرسال: {'حقيقي' if p['live'] else 'تجريبي (لا يُرسل شيء)'}",
-         "التشغيل: كل 30 دقيقة تقريباً أيام التداول؛ GitHub Actions قد يؤخر أو يفوّت بعض التشغيلات."]
-    return "\n".join(L)
+def _command_card(title, sections=(), footer=None):
+    """Compact, consistently spaced HTML card for Telegram command replies."""
+    out = [f"<b>{esc(title)}</b>"]
+    for heading, rows in sections:
+        if heading:
+            out += [sep(), f"<b>{esc(heading)}</b>"]
+        out.extend(esc(row) for row in rows if row not in (None, ""))
+    if footer:
+        out += [sep(), esc(footer)]
+    return Html("\n".join(out))
 
-def _help_text_plain():
-    return "\n".join(["🤖 الأوامر المتاحة:",
-                      "/الأخبار تشغيل — أو /news on : تشغيل الأخبار",
-                      "/الأخبار إيقاف — أو /news off : إيقاف الأخبار",
-                      "/التنبيهات — أو /alerts : تنبيهات اليوم",
-                      "/الوقف — أو /stops : ملاحظات الوقف والخطط المفتوحة",
-                      "/الملخص — أو /summary : ملخص سريع لكل الأسهم",
-                      "/الملخص NVDA — أو /summary NVDA : التفاصيل الكاملة لسهم واحد (آخر شمعة ساعة مغلقة)",
-                      "/الأسهم — أو /symbols : قائمة الأسهم",
-                      "/الحالة — أو /status : حالة البوت",
-                      "/الميزات — أو /features : كل الميزات وحالتها (تشغيل/إيقاف)",
-                      "/تبديل اسم_الميزة تشغيل|إيقاف — أو /toggle name on|off : تشغيل أو إيقاف أي ميزة",
-                      "/مساعدة — أو /help : هذه القائمة",
-                      "ملاحظة: الرد يصل مع التشغيل المجدول التالي (كل 30 دقيقة تقريباً؛ البوت لا يعمل باستمرار)."])
 
-def _features_list_plain(toggles):
-    L = ["⚙️ الميزات (الاسم للأمر /تبديل — الحالة):"]
-    for k, v in toggles.items():
-        L.append(f"• {k} — {FEATURE_WORD.get(k, k)}: {'مفعّلة ✅' if v else 'متوقفة ⛔'}")
-    L.append("مثال: /تبديل big_move إيقاف")
-    return "\n".join(L)
+def status(p):
+    delivery = "إرسال مباشر" if p["live"] else "وضع تجريبي — لا يرسل رسائل"
+    data = f"{p['data_ok']} من {p['n_symbols']} سهم · المصدر: {p['source']}"
+    return _command_card("🩺 حالة البوت", [
+        ("⏱️ التشغيل", [f"السوق: {p['phase_word']}", f"آخر تشغيل: {p.get('last_run') or 'لم يسجل بعد'}",
+                       "فحص الأوامر: كل 30 دقيقة على مدار الأسبوع (قد يتأخر GitHub Actions)"]),
+        ("📡 البيانات", [data, f"آخر مشكلة: {p.get('last_error') or 'لا توجد'}"]),
+        ("📊 نشاط اليوم", [f"{p['counts']['messages']} رسالة · {p['counts']['notes']} ملاحظة وقف · {p['open_plans']} خطة مفتوحة",
+                          delivery])])
+
+
+def help_text():
+    commands = [
+        ("/الملخص AAPL", "تحليل سهم واحد من آخر البيانات المتاحة"),
+        ("/الملخص", "ملخص سريع للأسهم المتابعة"),
+        ("/الأسهم", "عرض قائمة الأسهم التي يتابعها البوت"),
+        ("/التنبيهات", "تنبيهات اليوم"),
+        ("/الوقف", "ملاحظات الوقف والخطط المفتوحة"),
+        ("/الحالة", "حالة البوت والبيانات وآخر تشغيل"),
+        ("/الميزات", "الميزات المفعّلة والمتوقفة"),
+        ("/تبديل big_move إيقاف", "مثال لتغيير إعداد؛ استبدل اسم الميزة حسب الحاجة"),
+    ]
+    out = ["<b>🤖 أوامر البوت</b>", f"🔢 {len(commands)} أمر"]
+    for command, desc in commands:
+        out += [sep(), f"<b>{esc(command)}</b>", esc(desc)]
+    out += [sep(), "الرد قد يتأخر حتى نصف ساعة أو أكثر بسبب جدولة GitHub.",
+            "خارج السوق تُعرض آخر بيانات محفوظة، وليست أسعارًا مباشرة."]
+    return Html("\n".join(out))
+
+
+def features_list(toggles):
+    rows = []
+    for key, enabled in toggles.items():
+        label = FEATURE_WORD.get(key, key)
+        rows.append(f"{'✅' if enabled else '⛔'} {label} ({key})")
+    return _command_card("⚙️ إعدادات البوت", [("الميزات", rows)],
+                          "التعديل: /تبديل اسم_الميزة تشغيل أو /تبديل اسم_الميزة إيقاف")
+
 
 def toggle_usage():
-    return "الصيغة: /تبديل اسم_الميزة تشغيل أو /تبديل اسم_الميزة إيقاف (مثال: /تبديل big_move إيقاف). اكتب /الميزات لعرض الأسماء."
+    return _command_card("⚙️ طريقة تغيير إعداد", [("الصيغة", ["/تبديل اسم_الميزة تشغيل", "/تبديل اسم_الميزة إيقاف",
+                                                                  "مثال: /تبديل big_move إيقاف"]),
+                                                   ("المساعدة", ["أرسل /الميزات لمعرفة أسماء الميزات"])])
+
 
 def toggle_done(name, on):
-    return f"⚙️ {FEATURE_WORD.get(name, name)} ({name}): {'تم التشغيل ✅' if on else 'تم الإيقاف ⛔'}"
+    label = FEATURE_WORD.get(name, name)
+    return _command_card("⚙️ تم تحديث الإعداد", [(label, ["الحالة: مفعّلة ✅" if on else "الحالة: متوقفة ⛔"])])
 
-def news_toggle(on):
-    return "📰 تم تشغيل الأخبار ✅" if on else "📰 تم إيقاف الأخبار ⛔"
 
 def symbols_list(syms):
-    return f"📋 الأسهم المتابعة ({len(syms)}):\n" + "، ".join(syms)
+    rows = [" · ".join(syms[i:i+4]) for i in range(0, len(syms), 4)]
+    return _command_card(f"📋 الأسهم المتابعة ({len(syms)})", [("الرموز", rows)],
+                          "لتحليل سهم: /الملخص AAPL")
+
 
 def alerts_list(items):
     if not items:
-        return "🔔 لا توجد تنبيهات اليوم حتى الآن."
-    return "🔔 تنبيهات اليوم:\n" + "\n".join(f"• {x}" for x in items)
+        return _command_card("🔔 تنبيهات اليوم", [("الحالة", ["لا توجد تنبيهات حتى الآن"])])
+    return _command_card(f"🔔 تنبيهات اليوم ({len(items)})", [("التنبيهات", [f"• {x}" for x in items])])
+
 
 def stops_list(notes, plans):
-    if not notes and not plans:
-        return "🛡️ لا توجد ملاحظات وقف أو خطط مفتوحة الآن."
-    L = ["🛡️ ملاحظات الوقف:"]
+    rows = []
     for n in notes:
-        L.append(f"• {n['sym']}: {'🟢' if n['side'] == 'up' else '🔴'} وقف {money(n['sym'], n['stop'])} (الساعة {n['k']}) — {n['status_word']}")
-    if plans:
-        L.append("الخطط المفتوحة:")
-        for p in plans:
-            L.append(f"• {p['sym']} {'🟢 صعود' if p['dir'] == 'up' else '🔴 هبوط'}: دخول مرجعي {money(p['sym'], p['entry'])}، وقف {money(p['sym'], p['stop'])}، المتحقق: {'، '.join(p['hit']) or 'لا شيء'}")
-    return "\n".join(L)
+        rows.append(f"{n['sym']} {'🟢 صعود' if n['side'] == 'up' else '🔴 هبوط'} · وقف {money(n['sym'], n['stop'])} · الساعة {n['k']} · {n['status_word']}")
+    plan_rows = []
+    for p in plans:
+        plan_rows += [f"{p['sym']} {'🟢 صعود' if p['dir'] == 'up' else '🔴 هبوط'} · دخول {money(p['sym'], p['entry'])} · وقف {money(p['sym'], p['stop'])}",
+                      f"المتحقق: {', '.join(p['hit']) or 'لا شيء'}"]
+    if not rows and not plan_rows:
+        return _command_card("🛡️ الوقف والخطط", [("الحالة", ["لا توجد ملاحظات أو خطط مفتوحة الآن"])])
+    sections = []
+    if rows: sections.append((f"ملاحظات الوقف ({len(notes)})", rows))
+    if plan_rows: sections.append((f"الخطط المفتوحة ({len(plans)})", plan_rows))
+    return _command_card("🛡️ الوقف والخطط", sections, "المستويات مرجعية وليست توصية تداول.")
+
 
 def quick_summary(rows):
     if not rows:
-        return "📊 لا يوجد ملخص بعد (يصل أول ملخص بعد إغلاق شمعة 10:30)."
-    L = ["📊 ملخص سريع (آخر شمعة ساعة مغلقة):"]
+        return _command_card("📊 ملخص الأسهم", [("الحالة", ["لا يوجد ملخص محفوظ بعد.",
+                                                          "سيظهر بعد وصول بيانات وإغلاق شمعة ساعة."])])
+    blocks = []
     for r in rows:
-        L.append(f"• {r['sym']}: {money(r['sym'], r['price'])} {('🟢' if r['chg'] > 0 else '🔴' if r['chg'] < 0 else '⚪')} {pct(r['chg'])} من الافتتاح — {r['count']}")
-    L.append("للتفاصيل: /الملخص NVDA")
-    return "\n".join(L)
+        icon = "🟢" if r['chg'] > 0 else "🔴" if r['chg'] < 0 else "⚪"
+        blocks.append(f"{r['sym']} · {money(r['sym'], r['price'])} · {icon} {pct(r['chg'])} من الافتتاح\nالاتجاه: {r['count']}")
+    return _command_card(f"📊 الملخص السريع ({len(rows)} سهم)", [("آخر شمعة ساعة مغلقة", blocks)],
+                          "للتفاصيل أرسل: /الملخص AAPL")
 
+
+def detail_reply(text, sym, plans, notes, phase_word="غير معروف"):
+    """Mobile-first detail card with an explicit market state and stale-data caveat."""
+    lines = text.splitlines()
+    stamp = lines[0].split("—", 1)[1].strip() if lines and "—" in lines[0] else "وقت الإغلاق غير متاح"
+    price = lines[1] if len(lines) > 1 else "السعر غير متاح"
+    trends = lines[3:8] if len(lines) > 7 else []
+    levels = lines[10:13] if len(lines) > 12 else []
+    volatility = lines[13:16] if len(lines) > 15 else []
+    target = lines[16:17] if len(lines) > 16 else []
+    sections = [("🕒 التحديث", [stamp, f"حالة السوق الآن: {phase_word}", "البيانات من آخر شمعة ساعة مكتملة، وليست سعرًا لحظيًا."]),
+                ("💵 السعر والحركة", [price]),
+                ("🧭 الاتجاه", trends),
+                ("📍 مستويات مرجعية", levels),
+                ("📐 التذبذب", volatility),
+                ("🎯 أهداف مرجعية", target)]
+    if notes or plans:
+        rows = [f"ملاحظة وقف: {'🟢 صعود' if n['side'] == 'up' else '🔴 هبوط'} · {money(sym, n['stop'])} · {n['status_word']}" for n in notes]
+        for pl in plans:
+            rows.extend([f"خطة {'🟢 صعود' if pl['dir'] == 'up' else '🔴 هبوط'} · دخول {money(sym, pl['entry'])} · وقف {money(sym, pl['stop'])}",
+                         f"المتحقق: {', '.join(pl['hit']) or 'لا شيء'}"])
+        sections.append(("🛡️ الوقف والخطط", rows))
+    return _command_card(f"📊 تحليل {sym}", sections,
+                          "قراءة فنية تعليمية، وليست توصية شراء أو بيع.")
+
+
+def detail_missing(arg, syms):
+    return _command_card(f"🔎 لا تتوفر بيانات محفوظة لـ {arg}", [("الأسهم المدعومة", ["، ".join(syms)])],
+                          "أرسل /الأسهم للقائمة، أو جرّب /الملخص AAPL بعد تحديث بيانات البوت.")
+
+
+def unknown_command():
+    return _command_card("❔ الأمر غير معروف", [("للمساعدة", ["أرسل /مساعدة لعرض الأوامر المتاحة."])])
 
 # =====================================================================================================
 # Consolidated / batched formats (toggles summary_consolidated, notes_consolidated, batch_events)
@@ -435,34 +486,6 @@ def hourly_board(p):
              "🔎 التفاصيل: /الملخص NVDA",
              DISCLAIMER]
     return pack(header, blocks, "\n".join(foot))
-
-# ---- /الملخص SYMBOL
-def detail_reply(text, sym, plans, notes):
-    """HTML version of the per-symbol summary (stored plain in state) + this symbol's notes and open plans."""
-    body = text[: -len(DISCLAIMER)].rstrip("\n") if text.endswith(DISCLAIMER) else text
-    lines = body.split("\n")
-    out = [f"📊 <b>ملخص {esc(sym)}</b>", esc(lines[0].split("—", 1)[1].strip()) if "—" in lines[0] else ""]
-    for ln in lines[1:]:
-        if ln in ("الاتجاه:", "المستويات:"):
-            out += [sep(), f"<b>{esc(ln.rstrip(':'))}</b>"]
-        else:
-            out.append(esc(ln))
-    if notes or plans:
-        out += [sep(), "<b>الوقف والخطط</b>"]
-    for n in notes:
-        out.append(f"🛡️ ملاحظة الساعة {n['k']}: {'🟢' if n['side'] == 'up' else '🔴'} وقف {esc(money(sym, n['stop']))} ({esc(n['status_word'])})")
-    for pl in plans:
-        rem = [f"{x['name']} {esc(money(sym, x['price']))}" for x in pl["targets"] if x["price"] is not None and x["name"] not in pl["hit"]]
-        out += [f"📋 خطة {'🟢 الصعود' if pl['dir'] == 'up' else '🔴 الهبوط'}:",
-                f"الدخول: {esc(money(sym, pl['entry']))}",
-                f"الوقف الحالي: {esc(money(sym, pl['stop']))}",
-                f"المتحقق: {'، '.join(pl['hit']) or 'لا شيء'}",
-                f"الباقي: {' · '.join(rem) or 'لا شيء'}"]
-    out += [sep(), DISCLAIMER]
-    return Html("\n".join(x for x in out if x != ""))
-
-def detail_missing(arg, syms):
-    return Html(f"لا يوجد ملخص لـ {b(arg)}.\nالأسهم المتاحة: " + "، ".join(esc(x) for x in syms) + "\nمثال: /الملخص NVDA")
 
 # ---- 4 batched
 def big_moves_batch(items):
@@ -661,16 +684,6 @@ def _split_facts(text, prefixes):
             out.append(ln)
     return "\n".join(out)
 
-def status(p):
-    txt = _split_facts(_status_plain(p), ("البيانات",))
-    out = []
-    for ln in txt.split("\n"):
-        if ln.startswith("اليوم: ") and "، " in ln:
-            out += ["اليوم:"] + [f"• {x}" for x in ln[len("اليوم: "):].split("، ")]
-        else:
-            out.append(ln)
-    return _as_html("\n".join(out), ("البيانات", "اليوم", "وضع الإرسال"))
-
 def half_hour_status(p):
     """Concise scheduled heartbeat while the US market is open."""
     if not p.get("run_ok"):
@@ -689,22 +702,6 @@ def half_hour_status(p):
         lines.append("آخر خطأ مسجل: لا يوجد")
     lines.append("الأوامر تُفحص عند كل تشغيل مجدول؛ قد يتأخر التشغيل بسبب GitHub Actions.")
     return _as_html("\n".join(lines), ("البيانات:", "آخر خطأ مسجل:"))
-
-def help_text():
-    """each command: bold Arabic command + English alias on one line, what it does on the next."""
-    lines = _help_text_plain().split("\n")
-    out = [f"<b>{esc(lines[0])}</b>", f"🔢 {sum(1 for x in lines if x.startswith('/'))} أمر"]
-    for ln in lines[1:]:
-        m = re.match(r"^(/.+?) — أو (/.+?) : (.+)$", ln)
-        if m:
-            out += [sep(), f"<b>{esc(m.group(1))}</b>  ({esc(m.group(2))})", esc(m.group(3))]
-        else:
-            out += [sep(), esc(ln)]
-    return Html("\n".join(out))
-
-def features_list(toggles):
-    return _as_html(_features_list_plain(toggles))
-
 
 def test_ping(status_msg):
     """manual run (workflow_dispatch with force_test): proves the GitHub -> Telegram path works, then the status."""

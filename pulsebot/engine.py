@@ -1,7 +1,7 @@
 """One bot run (GitHub Actions schedules this every 30 minutes). Deterministic: same data + same state -> same messages."""
 import logging, datetime as dt, os
 import pandas as pd
-from . import config as C, indicators as I, rules as R, messages as M, state as S, commands as CMD, news as NEWS
+from . import config as C, indicators as I, rules as R, messages as M, state as S, commands as CMD
 from .market_time import phase, session_bounds, is_trading_day, is_closed_bar, ET
 
 log = logging.getLogger("pulsebot.engine")
@@ -9,11 +9,11 @@ NOTE_WORD = {"active": "سارية", "cancelled": "ملغاة (رجوع للاف
 PHASE_WORD = {"holiday": "عطلة أو نهاية أسبوع", "pre": "قبل الافتتاح", "open": "مفتوح", "post": "بعد الإغلاق", "closed": "مغلق"}
 
 class Engine:
-    def __init__(self, data, tg, now, state_path=C.STATE_PATH, symbols=None, stats=None, news_getter=None, heartbeat_path=None, force_test=False):
+    def __init__(self, data, tg, now, state_path=C.STATE_PATH, symbols=None, stats=None, heartbeat_path=None, force_test=False):
         self.data, self.tg, self.now = data, tg, now
         self.state_path = state_path; self.symbols = symbols or C.SYMBOLS; self.force_test = force_test
         self.stats = C.load_stats() if stats is None else stats
-        self.news_getter = news_getter; self.queue = []
+        self.queue = []
         self.heartbeat_path = heartbeat_path or os.path.join(os.path.dirname(state_path) or ".", "heartbeat.txt")
 
     # ---------- output ----------
@@ -175,8 +175,6 @@ class Engine:
             if self.now >= close:
                 self.end_of_day(today)
         self.render(today)
-        if ph in ("open", "post") and self.on("news"):
-            self.do_news(today)
 
     def big_moves(self, today, ctx):
         out = []
@@ -426,19 +424,6 @@ class Engine:
             view["messages"] = cnt.get("messages", 0) + len(st.get("pending", [])) + len(self.queue) + 1
             self.emit("eod", M.eod(dict(o["eod"], counts=view)))
 
-    def do_news(self, today):
-        st = self.st; seen = set(st["news_seen"]); sent = 0
-        try:
-            items = NEWS.fetch_news(self.symbols, getter=self.news_getter)
-        except Exception as e:
-            log.info("news ignored: %s", e); return
-        for n in items:
-            if n["id"] in seen or sent >= 5:
-                continue
-            seen.add(n["id"]); st["news_seen"].append(n["id"]); sent += 1
-            self.emit("news", M.news(n))
-        st["news_seen"] = st["news_seen"][-500:]       # bounded dedupe list
-
     # ---------- commands ----------
     def handle_commands(self):
         st = self.st
@@ -458,10 +443,6 @@ class Engine:
 
     def reply(self, cmd, arg):
         st = self.st
-        if cmd == "news":
-            if arg in ("on", "off"):
-                st["toggles"]["news"] = arg == "on"; return M.news_toggle(arg == "on")
-            return "اكتب: /الأخبار تشغيل أو /الأخبار إيقاف (/news on أو /news off)"
         if cmd == "alerts":
             return M.alerts_list(st["alerts"])
         if cmd == "stops":
@@ -477,7 +458,8 @@ class Engine:
                 if not sym or sym not in st.get("detail", {}):
                     return M.detail_missing(arg, self.symbols)
                 return M.detail_reply(st["detail"][sym], sym, [p for p in st["plans"] if p["sym"] == sym and p["status"] == "open"],
-                                      [dict(r, status_word=NOTE_WORD[r["status"]]) for r in st["notes"].get(sym, [])])
+                                      [dict(r, status_word=NOTE_WORD[r["status"]]) for r in st["notes"].get(sym, [])],
+                                      PHASE_WORD[phase(self.now)])
             return M.quick_summary([dict(v, sym=s) for s, v in st["last_summary"].items()])
         if cmd == "symbols":
             return M.symbols_list(self.symbols)
@@ -498,4 +480,4 @@ class Engine:
                 return "لا يمكن إيقاف الأوامر من داخل البوت (وإلا ما تقدر ترجّعها). عدّلها في config.py إن أردت."
             st["toggles"][name] = val == "on"
             return M.toggle_done(name, val == "on")
-        return "أمر غير معروف. اكتب /مساعدة لعرض الأوامر."
+        return M.unknown_command()

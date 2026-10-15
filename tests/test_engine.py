@@ -17,10 +17,10 @@ def cache(tmp_path_factory):
 
 def no_net(req): raise AssertionError("network used")
 
-def run(cache, tmp, t, fixture=None, news_getter=None, data=None):
+def run(cache, tmp, t, fixture=None, data=None):
     tg = Telegram(None, 12345, live=False, opener=no_net, updates_fixture=fixture)
     Engine(data or OfflineData(cache, t), tg, t, state_path=str(tmp / "state.json"), symbols=SYMS,
-           news_getter=news_getter or (lambda s: []), heartbeat_path=str(tmp / "hb.txt")).run()
+           heartbeat_path=str(tmp / "hb.txt")).run()
     return tg.sent
 
 def at(h, m, day=DAY): return dt.datetime(day.year, day.month, day.day, h, m, tzinfo=ET)
@@ -63,7 +63,7 @@ def test_toggles_off_restore_one_message_per_item(cache, tmp_path):
 def test_notable_formula(cache, tmp_path):
     from pulsebot import config as C
     tg = Telegram(None, 12345, live=False, opener=no_net)
-    e = Engine(OfflineData(cache, at(10, 40)), tg, at(10, 40), state_path=str(tmp_path / "s.json"), symbols=SYMS, news_getter=lambda s: [])
+    e = Engine(OfflineData(cache, at(10, 40)), tg, at(10, 40), state_path=str(tmp_path / "s.json"), symbols=SYMS)
     e.st = S.new_state(); e.big_syms = set(); bar = pd.Timestamp(at(9, 30))
     assert e.notable_reasons("AAA", bar) == []
     e.big_syms = {"AAA"}; assert e.notable_reasons("AAA", bar) == ["⚡ تقلب عالٍ اليوم"]
@@ -94,8 +94,9 @@ def test_summary_symbol_detail_reply(cache, tmp_path):
                               {"update_id": 3, "message": {"chat": {"id": 12345}, "text": "/الملخص"}}], ensure_ascii=False), encoding="utf-8")
     sent = run(cache, tmp_path, at(16, 40), fixture=str(fx))
     rep = [x for k, x in sent if k == "cmd_summary"]
-    assert rep[0].startswith("📊 <b>ملخص AAA</b>\nشمعة الساعة 15:30-16:00 يوم 2026-09-30") and "الشهري" in rep[0]
-    assert "لا يوجد ملخص لـ <b>ZZZ</b>" in rep[1] and rep[2].startswith("📊 ملخص سريع")
+    assert rep[0].startswith("<b>📊 تحليل AAA</b>") and "15:30-16:00 يوم 2026-09-30" in rep[0]
+    assert "الشهري" in rep[0] and "ليست سعرًا لحظيًا" in rep[0]
+    assert "لا تتوفر بيانات محفوظة" in rep[1] and rep[2].startswith("<b>📊 الملخص السريع")
 
 def test_events_batch_one_message_per_run(cache, tmp_path):
     from pulsebot import messages as M
@@ -158,34 +159,22 @@ def test_repeated_run_same_time_no_duplicate(cache, tmp_path):
     a = run(cache, tmp_path, at(10, 40)); b = run(cache, tmp_path, at(10, 40))
     assert any(k == "summary" for k, _ in a) and not any(k == "summary" for k, _ in b)
 
-def test_toggle_off_and_commands(cache, tmp_path):
+def test_commands_work_and_news_command_is_removed(cache, tmp_path):
     fx = tmp_path / "u.json"
-    fx.write_text(json.dumps([{"update_id": 5, "message": {"chat": {"id": 12345}, "text": "/news on"}},
-                              {"update_id": 6, "message": {"chat": {"id": 999}, "text": "/الحالة"}}], ensure_ascii=False), encoding="utf-8")
+    fx.write_text(json.dumps([
+        {"update_id": 5, "message": {"chat": {"id": 12345}, "text": "/الحالة"}},
+        {"update_id": 6, "message": {"chat": {"id": 999}, "text": "/الحالة"}},
+        {"update_id": 7, "message": {"chat": {"id": 12345}, "text": "/الأخبار تشغيل"}},
+    ], ensure_ascii=False), encoding="utf-8")
     sent = run(cache, tmp_path, at(9, 10), fixture=str(fx))
     st = S.load(str(tmp_path / "state.json"))
-    assert st["toggles"]["news"] is True and st["update_offset"] == 7
-    assert [k for k, _ in sent if k.startswith("cmd_")] == ["cmd_news"]       # other chat ignored
-    fx.write_text(json.dumps([{"update_id": 7, "message": {"chat": {"id": 12345}, "text": "/الأخبار إيقاف"}},
-                              {"update_id": 8, "message": {"chat": {"id": 12345}, "text": "/الحالة"}}], ensure_ascii=False), encoding="utf-8")
-    sent = run(cache, tmp_path, at(9, 20), fixture=str(fx))
-    assert S.load(str(tmp_path / "state.json"))["toggles"]["news"] is False
+    assert st["update_offset"] == 8 and "news" not in st["toggles"]
+    assert [k for k, _ in sent if k.startswith("cmd_")] == ["cmd_status", "cmd_unknown"]
     status = [x for k, x in sent if k == "cmd_status"][0]
-    assert "حالة البوت" in status and "تجريبي" in status
-    st = S.load(str(tmp_path / "state.json")); st["toggles"]["hourly_summary"] = False; S.save(st, str(tmp_path / "state.json"))
-    assert not any(k == "summary" for k, _ in run(cache, tmp_path, at(10, 40)))
+    assert "<b>🩺 حالة البوت</b>" in status and "الأخبار" not in status
+    unknown = [x for k, x in sent if k == "cmd_unknown"][0]
+    assert "غير معروف" in unknown
 
-def test_news_failure_is_silent(cache, tmp_path):
-    st = S.new_state(); st["toggles"]["news"] = True; S.save(st, str(tmp_path / "state.json"))
-    def bad(sym): raise RuntimeError("news down")
-    sent = run(cache, tmp_path, at(10, 40), news_getter=bad)
-    assert not any(k in ("news", "tech") for k, _ in sent)
-
-def test_news_dedupe(cache, tmp_path):
-    st = S.new_state(); st["toggles"]["news"] = True; S.save(st, str(tmp_path / "state.json"))
-    g = lambda s: [{"id": "n1", "title": "Headline", "link": "https://example.com/1", "publisher": "X", "providerPublishTime": 1790000000}] if s == "AAA" else []
-    a = run(cache, tmp_path, at(10, 40), news_getter=g); b = run(cache, tmp_path, at(10, 50), news_getter=g)
-    assert [k for k, _ in a].count("news") == 1 and [k for k, _ in b].count("news") == 0
 
 def test_data_failure_sends_one_arabic_notice(cache, tmp_path):
     class Fail(OfflineData):
@@ -218,22 +207,21 @@ def test_toggle_any_feature_by_command(cache, tmp_path):
     assert st["toggles"]["big_move"] is False and st["toggles"]["commands"] is True
     assert not any(k == "big_move" for k, _ in sent)
     feats = [x for k, x in sent if k == "cmd_features"][0]
-    assert "big_move" in feats and "متوقفة" in feats
+    assert "big_move" in feats and "⛔" in feats
 
-def test_news_help_status_eod_are_html_one_fact_per_line():
+def test_help_and_command_cards_are_html_without_news():
     from pulsebot import messages as M
     from pulsebot.telegram import Html
-    n = M.news({"sym": "NVDA", "title": "Chips <up> & away", "publisher": "A&B", "time_txt": "10:00", "link": "https://x.y/?a=1&b=2"})
-    assert isinstance(n, Html) and n.startswith("📰 <b>NVDA</b>") and "Chips &lt;up&gt; &amp; away" in n and "a=1&amp;b=2" in n
     h = M.help_text()
-    assert isinstance(h, Html) and "<b>/الأخبار تشغيل</b>  (/news on)\nتشغيل الأخبار" in h and h.count(M.sep()) >= 11
-    for x in (n, h):
-        assert " — أو " not in x
+    assert isinstance(h, Html) and "<b>/الملخص AAPL</b>" in h and h.count(M.sep()) >= 9
+    assert "/news" not in h and "الأخبار" not in h
+    assert " — أو " not in h
+
 
 def test_force_test_sends_ping_even_when_closed(cache, tmp_path):
     tg = Telegram(None, 12345, live=False, opener=no_net)
     t = at(20, 0)                                   # after the session: no regular work
-    Engine(OfflineData(cache, t), tg, t, state_path=str(tmp_path / "s.json"), symbols=SYMS, news_getter=lambda s: [], force_test=True).run()
+    Engine(OfflineData(cache, t), tg, t, state_path=str(tmp_path / "s.json"), symbols=SYMS, force_test=True).run()
     kinds = [k for k, _ in tg.sent]
     assert kinds == ["test"] and "رسالة اختبار" in tg.sent[0][1] and "حالة البوت" in tg.sent[0][1]
 

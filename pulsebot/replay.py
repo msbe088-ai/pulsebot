@@ -6,8 +6,7 @@ from .data import OfflineData
 from .telegram import Telegram
 from .engine import Engine
 
-def replay_day(day, out_dir="samples/replay", cache="data_cache", commands=None, toggles=None, symbols=None, keep_state=False, news_getter=None):
-    news_getter = news_getter or (lambda sym: [])   # offline: never touch the network
+def replay_day(day, out_dir="samples/replay", cache="data_cache", commands=None, toggles=None, symbols=None, keep_state=False):
     os.makedirs(out_dir, exist_ok=True)
     state_path = os.path.join(out_dir, "state.json")
     if not keep_state and os.path.exists(state_path):
@@ -26,7 +25,7 @@ def replay_day(day, out_dir="samples/replay", cache="data_cache", commands=None,
         elif os.path.exists(fixture):
             os.remove(fixture)
         tg = Telegram(token=None, chat_id=12345, live=False, updates_fixture=fixture if upd else None)
-        Engine(OfflineData(cache, t), tg, t, state_path=state_path, symbols=symbols, news_getter=news_getter, heartbeat_path=os.path.join(out_dir, "heartbeat.txt")).run()
+        Engine(OfflineData(cache, t), tg, t, state_path=state_path, symbols=symbols, heartbeat_path=os.path.join(out_dir, "heartbeat.txt")).run()
         for kind, text in tg.sent:
             log.append({"time": t.strftime("%H:%M"), "kind": kind, "text": str(text), "html": type(text).__name__ == "Html"})
         t += dt.timedelta(minutes=10)

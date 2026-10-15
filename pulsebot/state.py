@@ -4,7 +4,7 @@ from .config import DEFAULT_TOGGLES
 
 def new_state():
     return {"version": 1, "day": None, "last_run": None, "sent": {}, "last_bar": {}, "last_trend": {}, "notes": {}, "plans": [],
-            "counts": {}, "alerts": [], "toggles": dict(DEFAULT_TOGGLES), "update_offset": 0, "news_seen": [], "pending": [],
+            "counts": {}, "alerts": [], "toggles": dict(DEFAULT_TOGGLES), "update_offset": 0, "pending": [],
             "errors": {}, "last_error": None, "last_summary": {}, "heartbeat_week": None, "data_ok": 0, "source": "",
             "trend_today": {}, "detail": {}}
 
@@ -17,8 +17,11 @@ def load(path):
         try:
             st = json.load(open(path, encoding="utf-8"))
             base = new_state(); base.update(st)
+            base.pop("news_seen", None)
+            base["toggles"].pop("news", None)
             for k, v in DEFAULT_TOGGLES.items():
                 base["toggles"].setdefault(k, v)
+            base["pending"] = [m for m in base.get("pending", []) if m.get("kind") != "news"]
             return base
         except Exception:
             pass
@@ -31,13 +34,12 @@ def save(st, path):
     os.replace(tmp, path)
 
 def roll_day(st, today):
-    """new trading day: clear intraday objects, keep toggles/offset/news_seen; prune dedupe keys older than 7 days."""
+    """new trading day: clear intraday objects and prune dedupe keys older than 7 days."""
     if st["day"] == today.isoformat():
         return False
     st["day"] = today.isoformat(); st["notes"] = {}; st["plans"] = []; st["alerts"] = []; st["counts"] = zero_counts(); st["trend_today"] = {}
     cutoff = (today - dt.timedelta(days=7)).isoformat()
     st["sent"] = {k: v for k, v in st["sent"].items() if v >= cutoff}
-    st["news_seen"] = st["news_seen"][-500:]
     return True
 
 def once(st, key, today):

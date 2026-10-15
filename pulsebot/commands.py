@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 """Command parsing: Arabic + English aliases. Returns (command_id, argument) with ASCII ids."""
 ALIASES = {
-    "news": ["/الأخبار", "/الاخبار", "/news"],
     "alerts": ["/التنبيهات", "/alerts"],
     "stops": ["/الوقف", "/stops", "/stop"],
     "summary": ["/الملخص", "/summary"],

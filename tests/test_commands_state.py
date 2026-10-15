@@ -2,9 +2,8 @@ import datetime as dt
 from pulsebot import commands as C, state as S
 
 def test_arabic_and_english_aliases():
-    assert C.parse("/الأخبار تشغيل") == ("news", "on")
-    assert C.parse("/الاخبار إيقاف") == ("news", "off")
-    assert C.parse("/news on") == ("news", "on") and C.parse("/NEWS OFF") == ("news", "off")
+    assert C.parse("/الأخبار تشغيل")[0] == "unknown"
+    assert C.parse("/news on")[0] == "unknown"
     assert C.parse("/التنبيهات")[0] == "alerts" and C.parse("/alerts")[0] == "alerts"
     assert C.parse("/الوقف")[0] == "stops" and C.parse("/الملخص")[0] == "summary"
     assert C.parse("/الأسهم")[0] == "symbols" and C.parse("/الاسهم")[0] == "symbols"
@@ -21,7 +20,7 @@ def test_state_dedupe_and_roll(tmp_path):
     assert st2["plans"] == [{"x": 1}] and "k1" in st2["sent"]
     assert S.roll_day(st2, dt.date(2026, 10, 1))
     assert st2["plans"] == [] and "old" not in st2["sent"] and "k1" in st2["sent"]
-    assert st2["toggles"]["news"] is False                    # news OFF by default
+    assert "news" not in st2["toggles"]
 
 def test_state_load_corrupt_file(tmp_path):
     p = tmp_path / "bad.json"; p.write_text("{not json")
@@ -36,3 +35,11 @@ def test_toggle_command_parse():
 def test_summary_symbol_argument():
     assert C.parse("/الملخص nvda") == ("summary", "NVDA") and C.parse("/summary ^gspc") == ("summary", "^GSPC")
     assert C.parse("/الملخص") == ("summary", None)
+
+
+def test_legacy_news_state_is_removed(tmp_path):
+    p = tmp_path / "legacy.json"
+    p.write_text('{"toggles":{"news":true},"news_seen":["old"],"pending":[{"kind":"news","text":"old headline"},{"kind":"cmd_status","text":"ok"}]}', encoding="utf-8")
+    st = S.load(str(p))
+    assert "news" not in st["toggles"] and "news_seen" not in st
+    assert [m["kind"] for m in st["pending"]] == ["cmd_status"]

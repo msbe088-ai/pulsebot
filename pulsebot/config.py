@@ -16,7 +16,7 @@ def build_symbols():
 
 SYMBOLS = build_symbols()
 
-# ---- feature toggles (every feature can be switched off). news is OFF by default. ----
+# ---- feature toggles (every feature can be switched off). ----
 DEFAULT_TOGGLES = {
     "morning_heartbeat": True,   # msg 1
     "hourly_summary": True,      # msg 2
@@ -26,7 +26,6 @@ DEFAULT_TOGGLES = {
     "targets": True,             # msg 7..12
     "trail_stop_after_targets": True,  # after T1 stop->entry, after T2 stop->T1 (tracking + suggestion)
     "show_hit_stats": True,      # historical hit rates inside msg 7
-    "news": False,               # msg 13
     "eod_summary": True,         # msg 14
     "tech_alerts": True,         # msg 15
     "commands": True,            # getUpdates command handling
