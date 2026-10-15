@@ -1,10 +1,9 @@
-# PulseBot: runs every 30 minutes on weekdays. The UTC window 13:00-21:59 covers the US market session in BOTH
-# summer (EDT, UTC-4) and winter (EST, UTC-5); the code itself decides (zoneinfo) whether there is work to do,
-# so DST and holidays are handled in Python, not in cron. GitHub may delay scheduled runs by 5-20 minutes.
+# PulseBot: poll Telegram commands every 30 minutes, 24 hours a day on weekdays. Market analysis itself
+# remains gated by market_time.py; GitHub may delay or skip scheduled runs.
 name: pulsebot
 on:
   schedule:
-    - cron: "7,37 13-21 * * 1-5"
+    - cron: "7,37 * * * 1-5"
   workflow_dispatch:
     inputs:
       force_test:
