@@ -1,9 +1,9 @@
-# PulseBot: poll Telegram commands every 30 minutes, 24 hours a day on weekdays. Market analysis itself
+# PulseBot: poll Telegram commands every 30 minutes, 24 hours a day on the entire week. Market analysis itself
 # remains gated by market_time.py; GitHub may delay or skip scheduled runs.
 name: pulsebot
 on:
   schedule:
-    - cron: "7,37 * * * 1-5"
+    - cron: "7,37 * * * *"
   workflow_dispatch:
     inputs:
       force_test:
