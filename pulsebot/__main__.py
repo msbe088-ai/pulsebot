@@ -23,7 +23,8 @@ def main(argv=None):
             import tempfile
             kw["state_path"] = os.path.join(tempfile.mkdtemp(), "state.json")
         tg = Telegram(token, chat, live=live and not missing, outbox_path=None if live else "samples/outbox_live_dryrun.jsonl")
-        Engine(LiveData(), tg, now_et(), force_test=force, **kw).run()
+        preview = os.environ.get("PULSEBOT_PREVIEW_SYMBOL") or None
+        Engine(LiveData(), tg, now_et(), force_test=force, preview_symbol=preview, **kw).run()
         for k, t in tg.sent:
             print(f"[{k}] {t.splitlines()[0] if t else ''}")
         print(f"messages: {len(tg.sent)} | live={tg.live} | ok={tg.ok} | failed={tg.failed}")

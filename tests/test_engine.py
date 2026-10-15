@@ -94,8 +94,9 @@ def test_summary_symbol_detail_reply(cache, tmp_path):
                               {"update_id": 3, "message": {"chat": {"id": 12345}, "text": "/الملخص"}}], ensure_ascii=False), encoding="utf-8")
     sent = run(cache, tmp_path, at(16, 40), fixture=str(fx))
     rep = [x for k, x in sent if k == "cmd_summary"]
-    assert rep[0].startswith("<b>📊 تحليل AAA</b>") and "15:30-16:00 يوم 2026-09-30" in rep[0]
-    assert "الشهري" in rep[0] and "ليست سعرًا لحظيًا" in rep[0]
+    assert rep[0].startswith("<b>📊 AAA · تحليل مختصر</b>") and "15:30-16:00 يوم 2026-09-30" in rep[0]
+    assert "الشهري" in rep[0] and "ليست لحظية" in rep[0]
+    assert len(rep[0]) < 1600 and "متوسط 20" not in rep[0]
     assert "لا تتوفر بيانات محفوظة" in rep[1] and rep[2].startswith("<b>📊 الملخص السريع")
 
 def test_events_batch_one_message_per_run(cache, tmp_path):
@@ -213,9 +214,19 @@ def test_help_and_command_cards_are_html_without_news():
     from pulsebot import messages as M
     from pulsebot.telegram import Html
     h = M.help_text()
-    assert isinstance(h, Html) and "<b>/الملخص AAPL</b>" in h and h.count(M.sep()) >= 9
+    assert isinstance(h, Html) and "<b>/الملخص AAPL</b>" in h and h.count(M.CARD_SEP) >= 9
     assert "/news" not in h and "الأخبار" not in h
     assert " — أو " not in h
+
+
+def test_manual_preview_sends_compact_saved_symbol_analysis(cache, tmp_path):
+    full_day(cache, tmp_path)
+    tg = Telegram(None, 12345, live=False, opener=no_net)
+    t = at(20, 0)
+    Engine(OfflineData(cache, t), tg, t, state_path=str(tmp_path / "state.json"), symbols=SYMS,
+           force_test=True, preview_symbol="AAA").run()
+    assert len(tg.sent) == 1 and tg.sent[0][0] == "preview"
+    assert "تحليل مختصر" in tg.sent[0][1] and "متوسط 20" not in tg.sent[0][1]
 
 
 def test_force_test_sends_ping_even_when_closed(cache, tmp_path):

@@ -9,9 +9,10 @@ NOTE_WORD = {"active": "سارية", "cancelled": "ملغاة (رجوع للاف
 PHASE_WORD = {"holiday": "عطلة أو نهاية أسبوع", "pre": "قبل الافتتاح", "open": "مفتوح", "post": "بعد الإغلاق", "closed": "مغلق"}
 
 class Engine:
-    def __init__(self, data, tg, now, state_path=C.STATE_PATH, symbols=None, stats=None, heartbeat_path=None, force_test=False):
+    def __init__(self, data, tg, now, state_path=C.STATE_PATH, symbols=None, stats=None, heartbeat_path=None, force_test=False, preview_symbol=None):
         self.data, self.tg, self.now = data, tg, now
         self.state_path = state_path; self.symbols = symbols or C.SYMBOLS; self.force_test = force_test
+        self.preview_symbol = preview_symbol
         self.stats = C.load_stats() if stats is None else stats
         self.queue = []
         self.heartbeat_path = heartbeat_path or os.path.join(os.path.dirname(state_path) or ".", "heartbeat.txt")
@@ -64,8 +65,19 @@ class Engine:
                     "last_error": st.get("last_error")
                 }))
         self.weekly_heartbeat(now)
-        if self.force_test:                              # manual GitHub run: always one message, even when the market is closed
-            self.emit("test", M.test_ping(self.reply("status", "")))
+        if self.force_test:                              # manual GitHub run: send one message, even when the market is closed
+            if self.preview_symbol:
+                sym = self.find_symbol(self.preview_symbol)
+                detail = st.get("detail", {}).get(sym) if sym else None
+                if detail:
+                    plans = [p for p in st["plans"] if p["sym"] == sym and p["status"] == "open"]
+                    notes = [dict(r, status_word=NOTE_WORD[r["status"]]) for r in st["notes"].get(sym, [])]
+                    msg = M.detail_reply(detail, sym, plans, notes, PHASE_WORD[phase(self.now)])
+                else:
+                    msg = M.detail_missing(self.preview_symbol, self.symbols)
+                self.emit("preview", msg)
+            else:
+                self.emit("test", M.test_ping(self.reply("status", "")))
         self.flush()
         S.save(st, self.state_path)
         return self.tg.sent

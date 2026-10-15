@@ -10,6 +10,11 @@ on:
         description: "Send a test + status message even outside market hours"
         type: boolean
         default: true
+      preview_symbol:
+        description: "Optional: send one compact saved analysis preview (e.g. AAPL)"
+        type: string
+        required: false
+        default: ""
 concurrency:
   group: pulsebot
   cancel-in-progress: true
@@ -38,6 +43,7 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           CHAT_ID: ${{ secrets.CHAT_ID }}
           PULSEBOT_FORCE_TEST: ${{ github.event_name == 'workflow_dispatch' && inputs.force_test && '1' || '0' }}
+          PULSEBOT_PREVIEW_SYMBOL: ${{ github.event_name == 'workflow_dispatch' && inputs.preview_symbol || '' }}
         run: python -m pulsebot run
       - name: Save state
         if: always()

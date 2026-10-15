@@ -254,15 +254,22 @@ def _tech_plain(p):
     return "\n".join(L)
 
 # ---------------- command replies ----------------
+CARD_SEP = "────────────"
+
+
 def _command_card(title, sections=(), footer=None):
     """Compact, consistently spaced HTML card for Telegram command replies."""
     out = [f"<b>{esc(title)}</b>"]
     for heading, rows in sections:
         if heading:
-            out += [sep(), f"<b>{esc(heading)}</b>"]
-        out.extend(esc(row) for row in rows if row not in (None, ""))
+            out += [CARD_SEP, f"<b>{esc(heading)}</b>"]
+        for row in rows:
+            if row not in (None, ""):
+                safe = esc(row)
+                safe = re.sub(r"([+−-]?\$[\d,]+\.\d{2})", r"<code>\1</code>", safe)
+                out.append(safe)
     if footer:
-        out += [sep(), esc(footer)]
+        out += [CARD_SEP, esc(footer)]
     return Html("\n".join(out))
 
 
@@ -290,8 +297,8 @@ def help_text():
     ]
     out = ["<b>🤖 أوامر البوت</b>", f"🔢 {len(commands)} أمر"]
     for command, desc in commands:
-        out += [sep(), f"<b>{esc(command)}</b>", esc(desc)]
-    out += [sep(), "الرد قد يتأخر حتى نصف ساعة أو أكثر بسبب جدولة GitHub.",
+        out += [CARD_SEP, f"<b>{esc(command)}</b>", esc(desc)]
+    out += [CARD_SEP, "الرد قد يتأخر حتى نصف ساعة أو أكثر بسبب جدولة GitHub.",
             "خارج السوق تُعرض آخر بيانات محفوظة، وليست أسعارًا مباشرة."]
     return Html("\n".join(out))
 
@@ -356,29 +363,46 @@ def quick_summary(rows):
                           "للتفاصيل أرسل: /الملخص AAPL")
 
 
+def _nearest_level(line, label, arrow):
+    match = re.search(r"(?:\$[\d,]+\.\d{2}|[\d,]+\.\d{2} نقطة)(?: \([^)]+\))?", line)
+    return f"{arrow} {label}: {match.group(0)}" if match else f"{arrow} {label}: غير متاح"
+
+
 def detail_reply(text, sym, plans, notes, phase_word="غير معروف"):
-    """Mobile-first detail card with an explicit market state and stale-data caveat."""
+    """Short mobile-first per-symbol analysis; technical rule commentary stays out of the main reply."""
     lines = text.splitlines()
     stamp = lines[0].split("—", 1)[1].strip() if lines and "—" in lines[0] else "وقت الإغلاق غير متاح"
     price = lines[1] if len(lines) > 1 else "السعر غير متاح"
-    trends = lines[3:8] if len(lines) > 7 else []
-    levels = lines[10:13] if len(lines) > 12 else []
-    volatility = lines[13:16] if len(lines) > 15 else []
-    target = lines[16:17] if len(lines) > 16 else []
-    sections = [("🕒 التحديث", [stamp, f"حالة السوق الآن: {phase_word}", "البيانات من آخر شمعة ساعة مكتملة، وليست سعرًا لحظيًا."]),
-                ("💵 السعر والحركة", [price]),
+    trends = []
+    for line in lines[3:7]:
+        short = line.split(" — ", 1)[0].strip()
+        if short:
+            trends.append(short)
+    if len(lines) > 7 and lines[7].startswith("الخلاصة:"):
+        trends.append(lines[7])
+    levels = [_nearest_level(lines[i], name, arrow) for i, name, arrow in
+              ((10, "مقاومة قريبة", "⬆️"), (11, "دعم قريب", "⬇️")) if len(lines) > i]
+    volatility = []
+    if len(lines) > 13:
+        volatility.append(lines[13])
+    if len(lines) > 14:
+        # Replace the long formula with its plain current-day range observation.
+        range_line = lines[14]
+        m = re.search(r"تحرّك اليوم حتى الآن.*?= ([^=]+) من المعتاد", range_line)
+        volatility.append("مدى اليوم: " + m.group(1).strip() if m else range_line)
+    sections = [("🕒 آخر تحديث", [stamp, f"السوق الآن: {phase_word}", "بيانات آخر شمعة ساعة مكتملة؛ ليست لحظية."]),
+                ("💵 السعر", [price]),
                 ("🧭 الاتجاه", trends),
-                ("📍 مستويات مرجعية", levels),
-                ("📐 التذبذب", volatility),
-                ("🎯 أهداف مرجعية", target)]
+                ("📍 أقرب المستويات", levels),
+                ("📐 حركة اليوم", volatility)]
     if notes or plans:
         rows = [f"ملاحظة وقف: {'🟢 صعود' if n['side'] == 'up' else '🔴 هبوط'} · {money(sym, n['stop'])} · {n['status_word']}" for n in notes]
         for pl in plans:
             rows.extend([f"خطة {'🟢 صعود' if pl['dir'] == 'up' else '🔴 هبوط'} · دخول {money(sym, pl['entry'])} · وقف {money(sym, pl['stop'])}",
-                         f"المتحقق: {', '.join(pl['hit']) or 'لا شيء'}"])
+                         f"الأهداف المتحققة: {', '.join(pl['hit']) or 'لا شيء'}"])
         sections.append(("🛡️ الوقف والخطط", rows))
-    return _command_card(f"📊 تحليل {sym}", sections,
-                          "قراءة فنية تعليمية، وليست توصية شراء أو بيع.")
+    return _command_card(f"📊 {sym} · تحليل مختصر", sections,
+                          "مستويات مرجعية فقط؛ ليست توصية شراء أو بيع.")
 
 
 def detail_missing(arg, syms):
