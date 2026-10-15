@@ -20,6 +20,8 @@ class Engine:
     # ---------- output ----------
     def emit(self, kind, text, alert=None):
         from .telegram import Html
+        if not isinstance(text, Html):
+            text = M.format_single_message(text, kind)
         self.queue.append({"kind": kind, "text": str(text), "html": isinstance(text, Html)})   # html flag survives the JSON 'pending' list
         if alert: self.st["alerts"].append(alert)
     def flush(self):

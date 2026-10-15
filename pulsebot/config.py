@@ -66,8 +66,8 @@ P = {
 }
 
 MARKET = {"open": (9, 30), "close": (16, 0), "run_end": (16, 30), "morning_from": (9, 0)}
-# separator line between symbol blocks in consolidated messages: SEPARATOR_LEN x '━' (user picks 20 / 24 / 28)
-SEPARATOR_LEN = int(os.environ.get("PULSEBOT_SEPARATOR_LEN", "24"))
+# compact separator for mobile Telegram messages; can be adjusted with PULSEBOT_SEPARATOR_LEN (default 12)
+SEPARATOR_LEN = int(os.environ.get("PULSEBOT_SEPARATOR_LEN", "12"))
 TELEGRAM = {"min_interval_s": 1.2, "max_per_run": 60, "max_len": 3900, "retries": 3}   # max_len in UTF-16 units of the RAW text incl. HTML tags (Telegram limit 4096)
 DATA = {"batch": 10, "retries": 3, "backoff_s": 4, "daily_period": "3y", "hourly_period": "60d", "check_period": "1d"}
 STATE_PATH = os.environ.get("PULSEBOT_STATE", "state/state.json")

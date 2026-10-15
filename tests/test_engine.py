@@ -121,9 +121,9 @@ def test_separator_len_configurable(monkeypatch):
     from pulsebot import messages as M, config as C
     for n in (20, 24, 28):
         monkeypatch.setattr(C, "SEPARATOR_LEN", n)
-        assert M.sep() == "━" * n
-        assert "\n" + "━" * n + "\n" in M.pack("h", ["a", "b"], "f")[0]
-    monkeypatch.undo(); assert C.SEPARATOR_LEN == 24
+        assert M.sep() == "─" * n
+        assert "\n" + "─" * n + "\n" in M.pack("h", ["a", "b"], "f")[0]
+    monkeypatch.undo(); assert C.SEPARATOR_LEN == 12
 
 def test_dynamic_text_is_html_escaped():
     from pulsebot import messages as M
@@ -214,7 +214,7 @@ def test_help_and_command_cards_are_html_without_news():
     from pulsebot import messages as M
     from pulsebot.telegram import Html
     h = M.help_text()
-    assert isinstance(h, Html) and "<b>/الملخص AAPL</b>" in h and h.count(M.CARD_SEP) >= 9
+    assert isinstance(h, Html) and "<b>/الملخص AAPL</b>" in h and h.count(M.sep()) >= 9
     assert "/news" not in h and "الأخبار" not in h
     assert " — أو " not in h
 

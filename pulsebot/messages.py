@@ -254,22 +254,19 @@ def _tech_plain(p):
     return "\n".join(L)
 
 # ---------------- command replies ----------------
-CARD_SEP = "────────────"
-
-
 def _command_card(title, sections=(), footer=None):
     """Compact, consistently spaced HTML card for Telegram command replies."""
     out = [f"<b>{esc(title)}</b>"]
     for heading, rows in sections:
         if heading:
-            out += [CARD_SEP, f"<b>{esc(heading)}</b>"]
+            out += [sep(), f"<b>{esc(heading)}</b>"]
         for row in rows:
             if row not in (None, ""):
                 safe = esc(row)
                 safe = re.sub(r"([+−-]?\$[\d,]+\.\d{2})", r"<code>\1</code>", safe)
                 out.append(safe)
     if footer:
-        out += [CARD_SEP, esc(footer)]
+        out += [sep(), esc(footer)]
     return Html("\n".join(out))
 
 
@@ -297,8 +294,8 @@ def help_text():
     ]
     out = ["<b>🤖 أوامر البوت</b>", f"🔢 {len(commands)} أمر"]
     for command, desc in commands:
-        out += [CARD_SEP, f"<b>{esc(command)}</b>", esc(desc)]
-    out += [CARD_SEP, "الرد قد يتأخر حتى نصف ساعة أو أكثر بسبب جدولة GitHub.",
+        out += [sep(), f"<b>{esc(command)}</b>", esc(desc)]
+    out += [sep(), "الرد قد يتأخر حتى نصف ساعة أو أكثر بسبب جدولة GitHub.",
             "خارج السوق تُعرض آخر بيانات محفوظة، وليست أسعارًا مباشرة."]
     return Html("\n".join(out))
 
@@ -426,7 +423,7 @@ def esc(x):
 
 def sep():
     from .config import SEPARATOR_LEN
-    return "━" * SEPARATOR_LEN
+    return "─" * SEPARATOR_LEN
 
 def b(x):
     return f"<b>{esc(x)}</b>"
@@ -577,9 +574,10 @@ def notes_board(p):
     """ONE message after hour k (k = 1 or 2) for the notable symbols."""
     k = p["k"]; kw = "الأولى" if k == 1 else "الثانية"
     if not p["items"]:
-        return [Html("\n".join([f"🛡️ <b>بعد الساعة {kw}</b>", f"🕐 {t(p['time'])}",
-                                f"لا يوجد سهم بارز الآن، فلا ملاحظات وقف{' أو أهداف' if k == 1 else ''}.", NOTABLE_TEXT,
-                                "لعرض كل الأسهم: /تبديل notable_only إيقاف"]))]
+        return [Html("\n".join([f"<b>🛡️ بعد الساعة {kw}</b>", sep(), "<b>🕒 التوقيت</b>", t(p["time"]),
+                                sep(), "<b>📋 النتيجة</b>",
+                                f"لا يوجد سهم بارز الآن، فلا ملاحظات وقف{' أو أهداف' if k == 1 else ''}.",
+                                NOTABLE_TEXT, "لعرض كل الأسهم: /تبديل notable_only إيقاف"]))]
     header = (f"🛡️🎯 <b>{'الوقف والأهداف' if k == 1 else 'ملاحظات الوقف'} بعد الساعة {kw}</b>\n"
               f"🕐 {t(p['time'])}\n🔢 {len(p['items'])} سهم بارز · {p['n_other']} غير بارز")
     blocks = []
@@ -679,8 +677,41 @@ def _as_html(text, sep_before=()):
         out.append(esc(ln))
     return Html("\n".join(out))
 
+def format_single_message(text, kind):
+    """Render legacy single-event strings as consistent HTML cards without changing their wording."""
+    prefixes = {
+        "trend_change": ("الشمعة:", "المستوى المكسور:", "المسافة بعد الكسر:", "الوقت:", "القاعدة:"),
+        "big_move": ("مؤشر التقلب:", "ترتيبه:", "الحركة المعتادة اليوم:", "تاريخياً", "بصراحة:", "الاتجاه غير معروف:"),
+        "stop_note": ("افتتاح اليوم:", "السعر عند إغلاق الساعة:", "قاع اليوم", "قمة اليوم", "المسافة من السعر", "الإحصائية:", "معنى ذلك:", "تبطل الملاحظة"),
+        "targets": ("⚠️", "🟢 سيناريو", "🔴 سيناريو", "القواعد:", "المضاعف =", "بصراحة:"),
+        "stop_cancel": ("السبب:", "السعر الآن:", "الإحصائية السابقة"),
+        "target_hit": ("الوقت:", "اقتراح:", "(في المتابعة", "الأهداف الباقية:", "وصلت كل الأهداف"),
+        "stop_hit": ("الوقت:", "النتيجة من الدخول", "الأهداف المتحققة", "ملاحظة:"),
+        "plan_expired": ("الدخول المرجعي:", "الوقف كان:"),
+    }
+    lines = str(text).splitlines()
+    if not lines:
+        return Html("")
+    out = [f"<b>{esc(lines[0])}</b>"]
+    for line in lines[1:]:
+        if line.startswith(prefixes.get(kind, ())):
+            out.append(sep())
+        safe = esc(line)
+        safe = re.sub(r"([+−-]?\$[\d,]+\.\d{2})", r"<code>\1</code>", safe)
+        out.append(safe)
+    return Html("\n".join(out))
+
+
 def morning(p):
-    return _as_html(_morning_plain(p), ("⚡", "المفعّل"))
+    lines = _morning_plain(p).splitlines()
+    out = [f"<b>{esc(lines[0])}</b>", sep(), "<b>📅 الجلسة</b>", esc(lines[1]), esc(lines[2]),
+           sep(), "<b>📡 المتابعة والبيانات</b>", esc(lines[3]), esc(lines[4]),
+           sep(), "<b>⚡ التقلب</b>", esc(lines[5]),
+           sep(), "<b>⚙️ الميزات</b>", esc(lines[6])]
+    if len(lines) > 7 and lines[7].startswith("المتوقف:"):
+        out.append(esc(lines[7]))
+    out += [sep(), "<b>🕐 موعد الملخصات</b>", esc(lines[-1])]
+    return Html("\n".join(out))
 
 def eod(p):
     """same facts as the plain version, but 'a — b — c' lines become one fact per line."""
